@@ -77,6 +77,12 @@ const TTSForm = () => {
     });
   };
 
+  // Log available voices for debugging
+  useEffect(() => {
+    console.log("Male voices:", ttsService.getMaleVoices().map(v => v.name));
+    console.log("Female voices:", ttsService.getFemaleVoices().map(v => v.name));
+  }, []);
+
   // Set up event listeners for speech events
   useEffect(() => {
     const handleEnd = () => {
