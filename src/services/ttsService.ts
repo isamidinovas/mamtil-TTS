@@ -1,8 +1,7 @@
 // Class for handling text-to-speech functionality
 class TTSService {
   private readonly API_URL = "/api/tts";
-  private readonly API_TOKEN =
-    "a4ee19f2d1f61a48a953427aa739d6585f65cad00135a69a9541a6839919906b2feabdfcc453fb7d1db37153530d8bbcc1ffa5208906173f23523b9091474ccf";
+  private readonly API_TOKEN = "";
   private audio: HTMLAudioElement | null = null;
 
   constructor() {
