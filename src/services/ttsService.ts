@@ -1,182 +1,126 @@
-
 // Class for handling text-to-speech functionality
 class TTSService {
-  private readonly synth: SpeechSynthesis;
-  private utterance: SpeechSynthesisUtterance | null = null;
-  private maleVoices: SpeechSynthesisVoice[] = [];
-  private femaleVoices: SpeechSynthesisVoice[] = [];
-  private selectedMaleVoice: SpeechSynthesisVoice | null = null;
-  private selectedFemaleVoice: SpeechSynthesisVoice | null = null;
+  private readonly API_URL = "/api/tts";
+  private readonly API_TOKEN =
+    "a4ee19f2d1f61a48a953427aa739d6585f65cad00135a69a9541a6839919906b2feabdfcc453fb7d1db37153530d8bbcc1ffa5208906173f23523b9091474ccf";
+  private audio: HTMLAudioElement | null = null;
 
   constructor() {
-    this.synth = window.speechSynthesis;
-    this.loadVoices();
-
-    // Some browsers (like Chrome) load voices asynchronously
-    if (speechSynthesis.onvoiceschanged !== undefined) {
-      speechSynthesis.onvoiceschanged = this.loadVoices.bind(this);
-    }
+    this.audio = new Audio();
   }
 
-  private loadVoices(): void {
-    const voices = this.synth.getVoices();
-    console.log("Available voices:", voices.map(v => `${v.name} (${v.lang})`));
-    
-    // Better filtering for English voices
-    const englishVoices = voices.filter(voice => 
-      voice.lang.includes('en') || voice.lang.includes('US') || voice.lang.includes('GB')
-    );
-    
-    // More aggressive filtering for male voices
-    this.maleVoices = englishVoices.filter(voice => {
-      const nameLower = voice.name.toLowerCase();
-      return (
-        (nameLower.includes('male') && !nameLower.includes('female')) || 
-        nameLower.includes('david') || 
-        nameLower.includes('thomas') || 
-        nameLower.includes('james') ||
-        nameLower.includes('daniel') ||
-        nameLower.includes('george') ||
-        nameLower.includes('guy') ||
-        nameLower.includes('john') ||
-        nameLower.includes('paul')
-      ) && !nameLower.includes('female');
-    });
-    
-    // Better filtering for female voices
-    this.femaleVoices = englishVoices.filter(voice => {
-      const nameLower = voice.name.toLowerCase();
-      return (
-        nameLower.includes('female') || 
-        nameLower.includes('zira') ||
-        nameLower.includes('lisa') ||
-        nameLower.includes('sarah') ||
-        nameLower.includes('karen') ||
-        nameLower.includes('moira') ||
-        nameLower.includes('samantha') ||
-        nameLower.includes('victoria')
-      );
-    });
-    
-    // If specific filtering failed, try to identify by common patterns
-    if (this.maleVoices.length === 0) {
-      // Try to find voices with deep pitch that are likely male
-      const nonFemaleVoices = englishVoices.filter(voice => 
-        !voice.name.toLowerCase().includes('female')
-      );
-      
-      if (nonFemaleVoices.length > 0) {
-        // Take the first few non-female voices, they're likely male
-        this.maleVoices = nonFemaleVoices.slice(0, 3);
-      } else if (voices.length > 0) {
-        // Last resort - take first voice
-        this.maleVoices = [voices[0]];
-      }
-    }
-    
-    if (this.femaleVoices.length === 0) {
-      // If we still don't have female voices, take ones not classified as male
-      const remainingVoices = englishVoices.filter(voice => 
-        !this.maleVoices.includes(voice)
-      );
-      
-      if (remainingVoices.length > 0) {
-        this.femaleVoices = remainingVoices.slice(0, 3);
-      } else if (voices.length > 1) {
-        // Last resort
-        this.femaleVoices = [voices[1]];
-      }
-    }
-    
-    console.log("Male voices:", this.maleVoices.map(v => v.name));
-    console.log("Female voices:", this.femaleVoices.map(v => v.name));
-    
-    // Select default voices (pick ones with lower/higher pitch when possible)
-    if (this.maleVoices.length > 0) {
-      // Try to find a voice with "deep" in the name, or default to the first
-      const deepVoice = this.maleVoices.find(v => 
-        v.name.toLowerCase().includes('deep')
-      );
-      this.selectedMaleVoice = deepVoice || this.maleVoices[0];
-    }
-    
-    if (this.femaleVoices.length > 0) {
-      this.selectedFemaleVoice = this.femaleVoices[0];
-    }
+  private getSpeakerId(isFemaleVoice: boolean): string {
+    // 1 - мужской голос, 2 - женский голос
+    return isFemaleVoice ? "2" : "1";
   }
 
-  public speak(text: string, isFemaleVoice: boolean = true): void {
-    // Cancel any current speech
-    this.cancel();
-    
-    // Create a new utterance
-    this.utterance = new SpeechSynthesisUtterance(text);
-    
-    // Select voice based on gender preference
-    if (isFemaleVoice && this.selectedFemaleVoice) {
-      this.utterance.voice = this.selectedFemaleVoice;
-      this.utterance.pitch = 1.1;  // Slightly higher pitch for female voice
-      this.utterance.rate = 0.95;
-    } else if (!isFemaleVoice && this.selectedMaleVoice) {
-      this.utterance.voice = this.selectedMaleVoice;
-      this.utterance.pitch = 0.8;  // Lower pitch for male voice
-      this.utterance.rate = 0.9;
+  public async speak(
+    text: string,
+    isFemaleVoice: boolean = true
+  ): Promise<void> {
+    try {
+      // Отменяем текущее воспроизведение
+      this.cancel();
+
+      // Создаем объект с данными для API
+      const requestData = {
+        text: text,
+        speaker_id: this.getSpeakerId(isFemaleVoice),
+      };
+
+      // Отправляем запрос к API
+      const response = await fetch(this.API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.API_TOKEN}`,
+        },
+        body: JSON.stringify(requestData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          errorData.message || `HTTP error! status: ${response.status}`
+        );
+      }
+
+      // Получаем аудио данные
+      const audioBlob = await response.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+
+      // Создаем новый аудио элемент
+      this.audio = new Audio(audioUrl);
+
+      // Воспроизводим
+      await this.audio.play();
+    } catch (error) {
+      console.error("Error in TTS service:", error);
+      throw error;
     }
-    
-    // Speak the text
-    this.synth.speak(this.utterance);
   }
 
   public pause(): void {
-    if (this.synth.speaking) {
-      this.synth.pause();
+    if (this.audio) {
+      this.audio.pause();
     }
   }
 
   public resume(): void {
-    if (this.synth.paused) {
-      this.synth.resume();
+    if (this.audio) {
+      this.audio.play();
     }
   }
 
   public cancel(): void {
-    this.synth.cancel();
-    this.utterance = null;
+    if (this.audio) {
+      this.audio.pause();
+      this.audio.currentTime = 0;
+    }
   }
 
   public get isPaused(): boolean {
-    return this.synth.paused;
+    return this.audio ? this.audio.paused : true;
   }
 
   public get isSpeaking(): boolean {
-    return this.synth.speaking;
+    return this.audio ? !this.audio.paused && !this.audio.ended : false;
   }
 
-  // Function to get all available voices for debugging
-  public getAvailableVoices(): SpeechSynthesisVoice[] {
-    return this.synth.getVoices();
-  }
+  // Метод для получения аудио файла
+  public async getAudioBlob(
+    text: string,
+    isFemaleVoice: boolean = true
+  ): Promise<Blob> {
+    try {
+      const requestData = {
+        text: text,
+        speaker_id: this.getSpeakerId(isFemaleVoice),
+      };
 
-  public getMaleVoices(): SpeechSynthesisVoice[] {
-    return this.maleVoices;
-  }
+      const response = await fetch(this.API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.API_TOKEN}`,
+        },
+        body: JSON.stringify(requestData),
+      });
 
-  public getFemaleVoices(): SpeechSynthesisVoice[] {
-    return this.femaleVoices;
-  }
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          errorData.message || `HTTP error! status: ${response.status}`
+        );
+      }
 
-  // Function to get a downloadable audio blob
-  // Note: Web Speech API doesn't support direct audio export
-  // This is just a placeholder for potential future implementation
-  public async getAudioBlob(text: string, isFemaleVoice: boolean = true): Promise<string> {
-    // In a real implementation, we would generate an audio file
-    // For now, we'll just return a data URL
-    // In production, you might use a server-side TTS service that returns audio files
-    
-    alert("Audio download functionality requires a server-side text-to-speech API. This is a browser-based demo only.");
-    return "";
+      return await response.blob();
+    } catch (error) {
+      console.error("Error getting audio blob:", error);
+      throw error;
+    }
   }
 }
 
-// Export a singleton instance
+// Экспортируем экземпляр сервиса
 export const ttsService = new TTSService();
